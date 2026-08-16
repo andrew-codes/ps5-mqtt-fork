@@ -101,6 +101,9 @@ jobs:
         id: meta
         # Only same-repo PRs get a writable GITHUB_TOKEN (fork PRs and
         # dependabot get read-only tokens), so only those push images.
+        # GitHub also hard-caps GITHUB_TOKEN to read-only packages access
+        # whenever the repository itself is a fork, regardless of the
+        # `permissions:` block, so forked repos never push either.
         run: |
           set -euo pipefail
           if [ -n "${{ github.event.pull_request.number }}" ]; then
@@ -110,7 +113,8 @@ jobs:
           fi
           if [ "${{ github.event_name }}" = "pull_request" ] \
             && [ "${{ github.event.pull_request.head.repo.full_name }}" = "${{ github.repository }}" ] \
-            && [ "${{ github.actor }}" != "dependabot[bot]" ]; then
+            && [ "${{ github.actor }}" != "dependabot[bot]" ] \
+            && [ "${{ github.event.repository.fork }}" != "true" ]; then
             echo "push=true" >> "$GITHUB_OUTPUT"
           else
             echo "push=false" >> "$GITHUB_OUTPUT"
