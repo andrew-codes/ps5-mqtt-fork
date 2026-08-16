@@ -11,7 +11,8 @@ const debug = createDebugger("@ha:ps5:turnOffDevice")
 const debugError = createErrorLogger()
 
 function* turnOffDevice(action: ChangePowerModeAction) {
-  const { credentialStoragePath }: Settings = yield getContext(SETTINGS)
+  const { credentialStoragePath, allowPs4Devices }: Settings =
+    yield getContext(SETTINGS)
 
   if (action.payload.mode !== "STANDBY") {
     return
@@ -23,15 +24,31 @@ function* turnOffDevice(action: ChangePowerModeAction) {
     ),
   )
   try {
-    const { stdout, stderr } = sh.exec(
+    // Standby requires a full Remote Play handshake (discovery, session
+    // init, login, passcode, then the standby request itself), which can
+    // take much longer than a simple wake. The shelljs timeout must safely
+    // exceed the sum of the discovery/connect timeouts below so a slow but
+    // healthy handshake isn't killed mid-flight.
+    const { code, stdout, stderr } = sh.exec(
       `playactor standby --ip ${action.payload.device.address.address}` +
-        ` --timeout 5000 --connect-timeout 5000 --no-open-urls --no-auth` +
-        ` -c ${credentialStoragePath}`,
-      { silent: true, timeout: 5000 },
+        ` --timeout 10000 --connect-timeout 10000${
+          allowPs4Devices ? "" : " --ps5"
+        } --no-open-urls --no-auth -c ${credentialStoragePath}`,
+      { silent: true, timeout: 25000 },
     )
 
-    if (stderr) {
-      throw stderr
+    // playactor's `standby` command exits 0 on success and non-zero on any
+    // failure (including a shelljs timeout-kill, which produces exit code 1
+    // with no stderr output). Checking stderr alone misses that case, so the
+    // exit code - the same signal check-devices-state.ts trusts - is used
+    // as the authoritative success/failure indicator here.
+    if (code !== 0) {
+      throw new Error(
+        stderr ||
+          `playactor standby exited with code ${code} without completing ` +
+            "the standby handshake (it may have been killed after " +
+            "exceeding the timeout)",
+      )
     }
     debug(stdout)
 
