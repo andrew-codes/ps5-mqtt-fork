@@ -37,8 +37,7 @@ function* turnOnDevice(action: ChangePowerModeAction) {
     // stderr. Checking the exit code (not just stderr) catches that case.
     if (code !== 0) {
       throw new Error(
-        stderr ||
-          `playactor wake exited with code ${code} without completing`,
+        stderr || `playactor wake exited with code ${code} without completing`,
       )
     }
     debug(stdout)
